@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Live Bus Tracking</title>
+  <meta charset="utf-8" />
+
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet/dist/leaflet.css"
+  />
+
+  <style>
+    #map {
+      height: 100vh;
+    }
+  </style>
+</head>
+
+<body>
+  <h2 style="text-align:center;">Live Bus Tracking</h2>
+  <div id="map"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <!-- Supabase JS -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+  <script>
+    // ===============================
+    // 1. MAP SETUP
+    // ===============================
+    const map = L.map('map').setView([12.87, 74.845], 14);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // ===============================
+    // 2. SUPABASE SETUP
+    // ===============================
+    const SUPABASE_URL = "https://uvvvhicjlssthsrykzjc.supabase.co";
+    const SUPABASE_ANON_KEY ="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2dnZoaWNqbHNzdGhzcnlrempjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzNDIxMDUsImV4cCI6MjA4OTkxODEwNX0.qYiINKZbN0BrzUbHUxEu2uIVXn1WwFse5fqVTQDFVE4";
+
+    const client = window.supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_ANON_KEY
+    );
+
+    // ===============================
+    // 3. ICONS
+    // ===============================
+    const stopIcon = L.icon({
+      iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
+      iconSize: [25, 25]
+    });
+
+    const busIcon = L.icon({
+      iconUrl: "https://cdn-icons-png.flaticon.com/512/61/61231.png",
+      iconSize: [32, 32]
+    });
+
+    // ===============================
+    // 4. MARKERS STORAGE
+    // ===============================
+    const stopMarkers = {};
+    const busMarkers = {};
+
+    // ===============================
+    // 5. SMOOTH ANIMATION FUNCTION 🔥
+    // ===============================
+    function animateMarker(marker, newLat, newLng) {
+      const start = marker.getLatLng();
+      const end = L.latLng(newLat, newLng);
+
+      const duration = 2000; // smoothness (increase for slower)
+      const startTime = performance.now();
+
+      function animate(time) {
+        const progress = Math.min((time - startTime) / duration, 1);
+
+        const lat = start.lat + (end.lat - start.lat) * progress;
+        const lng = start.lng + (end.lng - start.lng) * progress;
+
+        marker.setLatLng([lat, lng]);
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        }
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    // ===============================
+    // 6. LOAD DATA
+    // ===============================
+    async function loadData() {
+
+      // ---------- GET BUSES ----------
+      const { data: buses, error: busError } =
+        await client.from('buses').select('*');
+
+      if (busError) {
+        console.error("Buses Error:", busError);
+        return;
+      }
+
+      // ---------- SHOW STOPS ----------
+      buses.forEach(bus => {
+        if (!bus.stops) return;
+
+        bus.stops.forEach(stop => {
+          const key = `${bus.id}_${stop.name}`;
+
+          if (!stopMarkers[key]) {
+            stopMarkers[key] = L.marker(
+              [stop.lat, stop.lng],
+              { icon: stopIcon }
+            )
+              .addTo(map)
+              .bindPopup(`${bus.name} - ${stop.name}`);
+          }
+        });
+      });
+
+      // ---------- GET LIVE LOCATIONS ----------
+      const { data: locations, error: locError } =
+        await client.from('live_locations').select('*');
+
+      if (locError) {
+        console.error("Location Error:", locError);
+        return;
+      }
+
+      // ---------- SHOW / UPDATE BUS ----------
+      locations.forEach(loc => {
+        if (busMarkers[loc.bus_id]) {
+          // 🔥 Smooth movement
+          animateMarker(busMarkers[loc.bus_id], loc.lat, loc.lng);
+        } else {
+          // Create new bus
+          busMarkers[loc.bus_id] = L.marker(
+            [loc.lat, loc.lng],
+            { icon: busIcon }
+          )
+            .addTo(map)
+            .bindPopup(`Bus ID: ${loc.bus_id}`);
+        }
+      });
+    }
+
+    // ===============================
+    // 7. RUN + LIVE UPDATE
+    // ===============================
+    loadData();
+    setInterval(loadData, 5000); // update every 5 sec
+
+  </script>
+</body>
+</html>

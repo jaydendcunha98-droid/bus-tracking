@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Driver Tracking</title>
+</head>
+<body>
+
+<h2>Driver Live Tracking</h2>
+
+<input type="text" id="busId" placeholder="Enter Bus ID (Bus1)">
+<button onclick="startTracking()">Start</button>
+
+<p id="status">Waiting...</p>
+
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+<script>
+const SUPABASE_URL = "https://uvvvhicjlssthsrykzjc.supabase.co";
+const SUPABASE_KEY = "YOUR_KEY";
+
+const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let watchId;
+
+function startTracking() {
+
+  const busId = document.getElementById("busId").value;
+
+  if (!busId) {
+    alert("Enter Bus ID");
+    return;
+  }
+
+  document.getElementById("status").innerText = "Tracking started...";
+
+  watchId = navigator.geolocation.watchPosition(
+    async (position) => {
+
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+
+      document.getElementById("status").innerText =
+        `Lat: ${lat}, Lng: ${lng}`;
+
+      // 🔥 SAVE TO DATABASE
+      const { error } = await client
+        .from("live_locations")
+        .upsert([
+          {
+            bus_id: busId,
+            lat: lat,
+            lng: lng,
+            updated_at: new Date()
+          }
+        ]);
+
+      if (error) {
+        console.log("Error:", error);
+      }
+
+    },
+    (error) => {
+      alert("Location error: " + error.message);
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 5000
+    }
+  );
+}
+</script>
+
+</body>
+</html>
